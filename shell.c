@@ -13,6 +13,26 @@
 #define MAX_ARG 100
 #define MAX_PATH 100
 
+void read_path_env(char **path_dirs, int *path_count)
+{
+    char *path_env = getenv("PATH");
+    if (path_env != NULL)
+    {
+        char *path_env_copy = strdup(path_env);
+        char *token = strtok(path_env_copy, ":");
+        while (token != NULL)
+        {
+            if (*path_count < MAX_PATH) {
+                path_dirs[(*path_count)++] = token;
+            } else {
+                fprintf(stderr, "Warning: PATH directories exceed maximum limit (%d)\n", MAX_PATH);
+                break;
+            }
+            token = strtok(NULL, ":");
+        }
+    }
+}
+
 void change_directory(char *path)
 {
     if (path == NULL || strcmp(path, "~") == 0) // do "cd ~" to go back to home directory
@@ -54,21 +74,36 @@ void unset_env_var(char *name)
     }
 }
 
-void get_env_var(char *input)
+void get_env_var(char **input)
 {
-    char var_name[strlen(input)];
-    strncpy(var_name, input + 1, strlen(input) - 1);
-    var_name[strlen(input) - 1] = '\0';
+    char var_name[strlen(*input) + 1];
+    strncpy(var_name, *input + 1, strlen(*input) - 1);
+    var_name[strlen(*input) - 1] = '\0';
 
     char *value = getenv(var_name);
+    fprintf(stderr, "value = %s\n", value);
+
     if (value != NULL)
     {
-        strcpy(input, value);
+        size_t value_len = strlen(value);
+        size_t input_len = strlen(*input);
+
+        if (value_len > input_len)
+        {
+            *input = malloc(value_len + 1);
+            if (*input == NULL)
+            {
+                perror("malloc");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        strncpy(*input, value, value_len + 1);
     }
 
     else
     {
-        input[0] = '\0';
+        (*input)[0] = '\0';
     }
 }
 
@@ -171,17 +206,15 @@ void execute_command_with_redirection(char *input, char **path_dirs, int path_co
     char *input_file = NULL;
     char *output_file = NULL;
 
-    char input_copy[strlen(input) + 1];
-    strcpy(input_copy, input);
+    char *input_redir = strchr(input, '<');
+    char *output_redir = strchr(input, '>');
 
-    char *input_redir = strchr(input_copy, '<');
     if (input_redir != NULL)
     {
         *input_redir = '\0';
         input_file = strtok(input_redir + 1, " ");
     }
 
-    char *output_redir = strchr(input, '>');
     if (output_redir != NULL)
     {
         *output_redir = '\0';
@@ -209,7 +242,7 @@ void execute_command_with_redirection(char *input, char **path_dirs, int path_co
     }
 
     char *args[MAX_ARG];
-    split_command_into_args(input_copy, args);
+    split_command_into_args(input, args);
 
     pid_t pid = fork();
     if (pid == 0)
@@ -244,6 +277,29 @@ void execute_command_with_redirection(char *input, char **path_dirs, int path_co
     else if (pid > 0)
     {
         wait(NULL);
+    }
+    else
+    {
+        perror("fork");
+    }
+}
+
+void execute_command_in_background(char *input, char **path_dirs, int path_count)
+{
+    char *args[MAX_ARG];
+    split_command_into_args(input, args);
+
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+        // Child process
+        execute_unimplemented_command(args[0], args, path_dirs, path_count);
+        exit(EXIT_FAILURE);
+    }
+    else if (pid > 0)
+    {
+        // Parent process
+        printf("Process %d running in background\n", pid);
     }
     else
     {

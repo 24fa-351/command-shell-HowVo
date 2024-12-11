@@ -13,22 +13,11 @@ int main()
     char input[MAX_INPUT];
     char *command;
     char *args[MAX_ARG];
-    char *path_env;
     char *path_dirs[MAX_PATH];
     int path_count = 0;
 
     // read PATH environment variable and find for any command typed that is not directly implemented
-    path_env = getenv("PATH");
-    if (path_env != NULL)
-    {
-        char *path_env_copy = strdup(path_env);
-        char *token = strtok(path_env_copy, ":");
-        while (token != NULL)
-        {
-            path_dirs[path_count++] = token;
-            token = strtok(NULL, ":");
-        }
-    }
+    read_path_env(path_dirs, &path_count);
 
     // main loop to keep the shell running
     while (1)
@@ -49,6 +38,15 @@ int main()
             continue;
         }
 
+        // check if the input contains a '&' character at the end
+        if (input[strlen(input) - 1] == '$')
+        {
+            input[strlen(input) - 1] = '\0'; // remove the '$' character
+            execute_command_in_background(input, path_dirs, path_count);
+            continue;
+        }
+
+        // check if the input contains a redirection operator
         if (strchr(input, '>') != NULL || strchr(input, '<') != NULL)
         {
             execute_command_with_redirection(input, path_dirs, path_count);
@@ -57,8 +55,10 @@ int main()
 
         // split the input into command and arguments
         int arg_count = 0;
+
         command = strtok(input, " ");
         args[arg_count++] = command;
+
         while ((args[arg_count] = strtok(NULL, " ")) != NULL)
         {
             arg_count++;
@@ -72,9 +72,9 @@ int main()
         // scan the input to see if there any $<something>, if so, replace it with the value of the environment variable
         for (int i = 0; i < arg_count; i++)
         {
-            if (args[i][0] == '$')
+            if (strchr(args[i], '$') != NULL)
             {
-                get_env_var(args[i]);
+                get_env_var(&args[i]);
             }
         }
 
